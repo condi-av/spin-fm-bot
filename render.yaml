@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: spin-fm-bot
-    env: docker
-    plan: free
-    port: 10000
-    envVars:
-      - key: BOT_TOKEN
-        sync: false
