@@ -1,3 +1,4 @@
+from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from regions import REGIONS
 
