@@ -209,3 +209,6 @@ def main():
     # Запуск бота (без polling)
     # application.run_polling(poll_interval=1)
     application.run_polling()
+
+if __name__ == '__main__':
+    main()
