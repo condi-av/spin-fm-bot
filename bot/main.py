@@ -1,5 +1,6 @@
 import os, feedparser, asyncio
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")          # из переменных окружения
@@ -9,7 +10,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # -------- команды --------
-@dp.message(commands=["start"])
+@dp.message(Command("start"))
 async def start(m: types.Message):
     kb = types.InlineKeyboardMarkup(
         inline_keyboard=[
@@ -18,14 +19,14 @@ async def start(m: types.Message):
     )
     await m.answer("👋 Привет! Я SpinFM-бот. Жми кнопку ниже.", reply_markup=kb)
 
-@dp.callback_query(lambda c: c.data == "bite")
+@dp.callback_query(F.data == "bite")
 async def bite(c: types.CallbackQuery):
     await c.answer()
     await c.message.answer("Пока просто заглушка: клюёт! 😄")
 
 # -------- парсер новостей --------
 async def post_news():
-    url = "https://fishering.ru/feed/"   # пример
+    url = "https://fishering.ru/feed/"
     feed = feedparser.parse(url)
     for entry in feed.entries[:1]:       # 1 пост за раз
         text = f"<b>{entry.title}</b>\n\n{entry.summary}\n\n{entry.link}"
@@ -39,5 +40,4 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-
     asyncio.run(main())
