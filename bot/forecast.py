@@ -1,4 +1,4 @@
-import aiohttp, datetime, math
+import os, aiohttp, datetime, math
 from typing import Dict
 
 OPENWEATHER_KEY = os.getenv("OPENWEATHER_KEY")   # добавим переменную чуть позже
