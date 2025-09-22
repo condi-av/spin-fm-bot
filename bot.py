@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from datetime import datetime
 import json
 
@@ -22,7 +22,7 @@ class FishingBot:
         self.weather_cache = {}
         self.cache_timeout = 1800  # 30 минут
 
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def start(self, update: Update, context: CallbackContext):
         """Обработчик команды /start"""
         user = update.effective_user
         keyboard = [['🎣 Погода и клёв'], ['📊 Помощь']]
@@ -36,9 +36,9 @@ class FishingBot:
 🎯 Просто нажми кнопку «🎣 Погода и клёв» или отправь название города!
         """
         
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
-    async def send_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def send_help(self, update: Update, context: CallbackContext):
         """Показать справку"""
         help_text = """
 🎣 *Рыболовный помощник*
@@ -59,7 +59,7 @@ class FishingBot:
 ⚡ *Средний*: умеренные изменения
 👎 *Плохой*: резкие перепады, сильный ветер, гроза
         """
-        await update.message.reply_text(help_text, parse_mode='Markdown')
+        update.message.reply_text(help_text, parse_mode='Markdown')
 
     def get_weather(self, city: str) -> dict:
         """Получить данные о погоде"""
@@ -208,7 +208,7 @@ class FishingBot:
             'pressure_mm': round(pressure_mm, 1)
         }
 
-    async def handle_weather_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def handle_weather_request(self, update: Update, context: CallbackContext):
         """Обработчик запроса погоды"""
         city = None
         
@@ -218,16 +218,16 @@ class FishingBot:
             city = update.message.text
 
         if not city:
-            await update.message.reply_text("🌤 Введите название города:\n\nНапример: Москва")
+            update.message.reply_text("🌤 Введите название города:\n\nНапример: Москва")
             return
 
-        await update.message.reply_chat_action(action='typing')
+        update.message.reply_chat_action(action='typing')
 
         # Получаем данные о погоде
         weather_data = self.get_weather(city)
         
         if not weather_data:
-            await update.message.reply_text(
+            update.message.reply_text(
                 "❌ Не удалось найти город. Проверьте название и попробуйте снова.\n\n"
                 "Примеры:\n• Москва\n• Санкт-Петербург\n• Новосибирск"
             )
@@ -254,24 +254,24 @@ class FishingBot:
 *Совет:* {fishing_conditions['advice']}
         """
 
-        await update.message.reply_text(message, parse_mode='Markdown')
+        update.message.reply_text(message, parse_mode='Markdown')
 
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def handle_message(self, update: Update, context: CallbackContext):
         """Обработчик текстовых сообщений"""
         text = update.message.text
         
         if text == '📊 Помощь':
-            await self.send_help(update, context)
+            self.send_help(update, context)
         elif text == '🎣 Погода и клёв':
-            await update.message.reply_text("🌤 Отправьте название города:\n\nНапример: Москва")
+            update.message.reply_text("🌤 Отправьте название города:\n\nНапример: Москва")
         else:
-            await self.handle_weather_request(update, context)
+            self.handle_weather_request(update, context)
 
-    async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def error_handler(self, update: Update, context: CallbackContext):
         """Обработчик ошибок"""
         logger.error(f"Ошибка: {context.error}")
         if update and update.message:
-            await update.message.reply_text("⚠️ Произошла ошибка. Попробуйте позже.")
+            update.message.reply_text("⚠️ Произошла ошибка. Попробуйте позже.")
 
 def main():
     """Основная функция"""
@@ -286,21 +286,23 @@ def main():
     # Создание бота
     fishing_bot = FishingBot()
     
-    # Создание приложения
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Создание updater
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
 
     # Добавление обработчиков
-    application.add_handler(CommandHandler("start", fishing_bot.start))
-    application.add_handler(CommandHandler("help", fishing_bot.send_help))
-    application.add_handler(CommandHandler("weather", fishing_bot.handle_weather_request))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fishing_bot.handle_message))
+    dispatcher.add_handler(CommandHandler("start", fishing_bot.start))
+    dispatcher.add_handler(CommandHandler("help", fishing_bot.send_help))
+    dispatcher.add_handler(CommandHandler("weather", fishing_bot.handle_weather_request))
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, fishing_bot.handle_message))
     
     # Обработчик ошибок
-    application.add_error_handler(fishing_bot.error_handler)
+    dispatcher.add_error_handler(fishing_bot.error_handler)
 
-    # Запуск бота (только polling на Render)
+    # Запуск бота
     logger.info("Запуск бота в режиме polling...")
-    application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
