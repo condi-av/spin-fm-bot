@@ -1,6 +1,6 @@
 import aiohttp, math, os
 from typing import Dict
-from .coords import COORDS          # теперь берём координаты
+from .coords import COORDS
 
 OPENWEATHER_KEY = os.getenv("OPENWEATHER_KEY")
 
