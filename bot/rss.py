@@ -1,6 +1,6 @@
 import feedparser
 from typing import List, Dict
-from .db import was_posted, mark_posted
+from db import was_posted, mark_posted  # Изменено здесь
 
 FEEDS = [
     "https://fishering.ru/feed/",
