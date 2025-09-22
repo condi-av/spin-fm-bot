@@ -1,0 +1,5 @@
+aiogram==3.5.0
+aiohttp==3.9.3
+feedparser==6.0.10
+apscheduler==3.10.4
+python-dotenv==1.0.0
