@@ -4,9 +4,9 @@ import requests
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from datetime import datetime
-from database import fishing_db  # Импортируем нашу базу данных
+from database import fishing_db
 
-# Настройка логирования ДО всего остального кода
+# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -25,42 +25,59 @@ class FishingBot:
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         user = update.effective_user
-        keyboard = [['🎣 Погода и клёв'], ['📊 Помощь']]
+        
+        # Расширенная клавиатура со всеми функциями
+        keyboard = [
+            ['🎣 Погода и клёв', '📍 Рыболовные места'],
+            ['🐟 Поиск по рыбе', '📊 Отчеты'],
+            ['📋 Помощь']
+        ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         
         welcome_text = f"""
 👋 Привет, {user.first_name}! Я твой рыболовный помощник!
 
-🌤 Я могу показать погоду в любом городе и спрогнозировать клёв рыбы.
+🌤 *Что я умею:*
+• Показывать погоду и прогноз клёва
+• Находить рыболовные места
+• Искать места по виду рыбы
+• Показывать свежие отчеты
 
-🎯 Просто нажми кнопку «🎣 Погода и клёв» или отправь название города!
+🎯 *Просто нажми нужную кнопку ниже!*
+
+📍 *Примеры использования:*
+• Нажми «🎣 Погода и клёв» → введи «Москва»
+• Нажми «🐟 Поиск по рыбе» → введи «щука»
+• Нажми «📍 Рыболовные места» → введи «СПб»
         """
         
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def send_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать справку"""
         help_text = """
-🎣 *Рыболовный помощник*
+🎣 *SpinFM Рус - Рыболовный помощник*
 
-*Команды:*
+*Основные команды:*
 /start - начать работу
 /weather [город] - погода и клёв
-/spots [город] - рыболовные места
+/spots [город] - рыболовные места  
 /fish [вид рыбы] - места для ловли
 /reports - последние отчеты
 /help - эта справка
 
 *Как использовать:*
-1. Нажмите кнопку «🎣 Погода и клёв»
-2. Отправьте название города (например: Москва)
-3. Получите детальный прогноз!
+1. Используйте кнопки ниже для быстрого доступа
+2. Или вводите команды вручную
+3. Для погоды - просто введите название города
 
-*Факторы влияющие на клёв:*
-✅ *Отличный*: стабильное давление, температура 15-25°C, легкий ветер
-👍 *Хороший*: небольшие изменения погоды
-⚡ *Средний*: умеренные изменения
-👎 *Плохой*: резкие перепады, сильный ветер, гроза
+*Примеры запросов:*
+• `Москва` - погода в Москве
+• `/spots СПб` - места в Санкт-Петербурге
+• `/fish щука` - места для ловли щуки
+
+*Поддерживаемые города:*
+Россия, Украина, Беларусь, Европа, США, Азия
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -78,12 +95,20 @@ class FishingBot:
             url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
             response = requests.get(url, timeout=10)
             
-            if response.status_code != 200:
-                logger.error(f"Weather API error: {response.status_code}")
+            if response.status_code == 404:
+                logger.warning(f"Город не найден: {city}")
+                return None
+            elif response.status_code != 200:
+                logger.error(f"Weather API error: {response.status_code} - {response.text}")
                 return None
 
             data = response.json()
             
+            # Проверяем, что город найден
+            if data.get('cod') != 200:
+                logger.warning(f"Город не найден в ответе API: {city}")
+                return None
+                
             weather_data = {
                 'city': data['name'],
                 'temp': round(data['main']['temp']),
@@ -105,7 +130,7 @@ class FishingBot:
             return weather_data
 
         except Exception as e:
-            logger.error(f"Error getting weather: {e}")
+            logger.error(f"Error getting weather for {city}: {e}")
             return None
 
     def calculate_fishing_conditions(self, weather_data: dict) -> dict:
@@ -213,15 +238,10 @@ class FishingBot:
 
     async def handle_weather_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик запроса погоды"""
-        city = None
+        city = update.message.text.strip()
         
-        if context.args:
-            city = ' '.join(context.args)
-        elif update.message.text and update.message.text not in ['🎣 Погода и клёв', '📊 Помощь']:
-            city = update.message.text
-
-        if not city:
-            await update.message.reply_text("🌤 Введите название города:\n\nНапример: Москва")
+        if not city or len(city) < 2:
+            await update.message.reply_text("🌤 Введите название города (минимум 2 символа)")
             return
 
         await update.message.reply_chat_action(action='typing')
@@ -230,10 +250,32 @@ class FishingBot:
         weather_data = self.get_weather(city)
         
         if not weather_data:
-            await update.message.reply_text(
-                "❌ Не удалось найти город. Проверьте название и попробуйте снова.\n\n"
-                "Примеры:\n• Москва\n• Санкт-Петербург\n• Новосибирск"
-            )
+            # Попробуем найти похожие города или дадим подсказки
+            suggestions = {
+                'москва': 'Москва', 'спб': 'Санкт-Петербург', 'питер': 'Санкт-Петербург',
+                'киев': 'Киев', 'минск': 'Минск', 'казань': 'Казань', 'новосибирск': 'Новосибирск'
+            }
+            
+            suggestion = suggestions.get(city.lower())
+            if suggestion:
+                await update.message.reply_text(
+                    f"Возможно вы имели в виду *{suggestion}*?\n"
+                    f"Попробуйте отправить: {suggestion}",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Не удалось найти погоду для этого города.\n\n"
+                    "🔍 *Проверьте:*\n"
+                    "• Правильность написания\n"
+                    "• Попробуйте английское название\n"
+                    "• Используйте крупные города\n\n"
+                    "🌆 *Примеры работающих городов:*\n"
+                    "• Москва, СПб, Киев, Минск\n"
+                    "• Лондон, Берлин, Париж\n"
+                    "• Нью-Йорк, Токио, Пекин",
+                    parse_mode='Markdown'
+                )
             return
 
         # Рассчитываем условия для рыбалки
@@ -260,19 +302,33 @@ class FishingBot:
         await update.message.reply_text(message, parse_mode='Markdown')
 
     async def show_fishing_spots(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Показать рыболовные места в городе"""
+        """Показать рыболовные места в городе - КОМАНДА"""
         city = ' '.join(context.args) if context.args else None
         
         if not city:
-            await update.message.reply_text("Укажите город: /spots Москва")
+            # Если город не указан, просим ввести
+            await update.message.reply_text(
+                "🗺️ *Поиск рыболовных мест*\n\n"
+                "Введите название города после команды:\n"
+                "`/spots Москва`\n"
+                "`/spots Санкт-Петербург`\n"
+                "`/spots Новосибирск`\n\n"
+                "Или используйте кнопку «📍 Рыболовные места»",
+                parse_mode='Markdown'
+            )
             return
+        
+        await update.message.reply_chat_action(action='typing')
         
         spots = fishing_db.get_spots_by_city(city.lower())
         
         if not spots:
             await update.message.reply_text(
-                f"❌ Не найдено рыболовных мест в городе {city}\n\n"
-                f"Попробуйте:\n• Москва\n• Санкт-Петербург\n• Новосибирск\n• Екатеринбург"
+                f"❌ Не найдено рыболовных мест в городе *{city}*\n\n"
+                f"📌 *Попробуйте эти города:*\n"
+                f"• Москва\n• Санкт-Петербург\n• Новосибирск\n• Екатеринбург\n\n"
+                f"🌍 *Или введите другой крупный город*",
+                parse_mode='Markdown'
             )
             return
         
@@ -286,38 +342,56 @@ class FishingBot:
             message += f"   🕒: {spot['best_season']}\n"
             message += f"   💰: {spot['access_type']}\n\n"
         
-        # Кнопки для интерактива
-        keyboard = [
-            [InlineKeyboardButton("🗺️ Показать на карте", callback_data=f"map_{city}")],
-            [InlineKeyboardButton("📊 Добавить отчет", callback_data=f"report_{city}")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+        await update.message.reply_text(message, parse_mode='Markdown')
 
     async def search_spots_by_fish(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Поиск мест по виду рыбы"""
+        """Поиск мест по виду рыбы - КОМАНДА"""
         fish_species = ' '.join(context.args) if context.args else None
         
         if not fish_species:
-            await update.message.reply_text("Укажите вид рыбы: /fish щука")
+            await update.message.reply_text(
+                "🎣 *Поиск мест по виду рыбы*\n\n"
+                "Введите вид рыбы после команды:\n"
+                "`/fish щука`\n"
+                "`/fish карп`\n"
+                "`/fish окунь`\n"
+                "`/fish лещ`\n"
+                "`/fish судак`\n\n"
+                "Или используйте кнопку «🐟 Поиск по рыбе»",
+                parse_mode='Markdown'
+            )
             return
+        
+        await update.message.reply_chat_action(action='typing')
         
         spots = fishing_db.get_spots_by_fish(fish_species.lower())
         
         if not spots:
             await update.message.reply_text(
-                f"❌ Не найдено мест для ловли {fish_species}\n\n"
-                f"Попробуйте:\n• щука\n• карп\n• окунь\n• лещ\n• судак"
+                f"❌ Не найдено мест для ловли *{fish_species}*\n\n"
+                f"🐟 *Попробуйте эти виды рыб:*\n"
+                f"• щука\n• карп\n• окунь\n• лещ\n• судак\n• плотва\n\n"
+                f"📍 *Или проверьте другие города в базе*",
+                parse_mode='Markdown'
             )
             return
         
         message = f"🎣 *Места для ловли {fish_species.title()}*\n\n"
         
-        for i, spot in enumerate(spots[:5], 1):  # Ограничиваем 5 местами
-            message += f"{i}. *{spot['name']}* ({spot['city'].title()})\n"
-            message += f"   📍: {spot['description']}\n"
-            message += f"   🕒: {spot['best_season']}\n\n"
+        # Группируем по городам
+        cities = {}
+        for spot in spots:
+            if spot['city'] not in cities:
+                cities[spot['city']] = []
+            cities[spot['city']].append(spot)
+        
+        for city, city_spots in list(cities.items())[:3]:  # Ограничиваем 3 городами
+            message += f"🏙️ *{city.title()}*\n"
+            for spot in city_spots[:2]:  # Ограничиваем 2 местами на город
+                message += f"• *{spot['name']}* - {spot['description']}\n"
+            message += "\n"
+        
+        message += f"🔍 *Найдено всего: {len(spots)} мест*"
         
         await update.message.reply_text(message, parse_mode='Markdown')
 
@@ -326,7 +400,11 @@ class FishingBot:
         reports = fishing_db.get_recent_reports(limit=5)
         
         if not reports:
-            await update.message.reply_text("📊 Пока нет отчетов о рыбалке")
+            await update.message.reply_text(
+                "📊 *Пока нет отчетов о рыбалке*\n\n"
+                "Будьте первым, кто добавит отчет о своей рыбалке!",
+                parse_mode='Markdown'
+            )
             return
         
         message = "📊 *Последние отчеты о рыбалке*\n\n"
@@ -343,14 +421,59 @@ class FishingBot:
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
-        text = update.message.text
+        text = update.message.text.strip()
         
-        if text == '📊 Помощь':
+        if text == '📋 Помощь':
             await self.send_help(update, context)
         elif text == '🎣 Погода и клёв':
-            await update.message.reply_text("🌤 Отправьте название города:\n\nНапример: Москва")
+            await update.message.reply_text(
+                "🌤 *Отправьте название города:*\n\n"
+                "Примеры:\n• Москва\n• Санкт-Петербург\n• Киев\n• Лондон\n• Берлин",
+                parse_mode='Markdown'
+            )
+        elif text == '📍 Рыболовные места':
+            await update.message.reply_text(
+                "🗺️ *Введите название города для поиска мест:*\n\n"
+                "Примеры:\n• Москва\n• СПб\n• Новосибирск\n• Екатеринбург",
+                parse_mode='Markdown'
+            )
+        elif text == '🐟 Поиск по рыбе':
+            await update.message.reply_text(
+                "🎣 *Введите вид рыбы для поиска:*\n\n"
+                "Примеры:\n• щука\n• карп\n• окунь\n• лещ\n• судак",
+                parse_mode='Markdown'
+            )
+        elif text == '📊 Отчеты':
+            await self.show_recent_reports(update, context)
         else:
-            await self.handle_weather_request(update, context)
+            # Если просто текст - проверяем, что это не команда для других функций
+            lower_text = text.lower()
+            
+            # Если ввели название рыбы - предлагаем использовать поиск по рыбе
+            fish_keywords = ['щука', 'карп', 'окунь', 'лещ', 'судак', 'плотва', 'карась', 'линь']
+            if any(fish in lower_text for fish in fish_keywords):
+                await update.message.reply_text(
+                    f"🎣 *Для поиска мест по рыбе используйте:*\n\n"
+                    f"Кнопку «🐟 Поиск по рыбе» или команду:\n`/fish {text}`",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # Если ввели короткий текст (возможно город для мест)
+            elif len(text) < 10 and not any(char.isdigit() for char in text):
+                # Предлагаем оба варианта
+                await update.message.reply_text(
+                    f"🔍 *Что вы хотите найти?*\n\n"
+                    f"Если это город для погоды - просто отправьте его\n"
+                    f"Если это город для поиска мест - используйте:\n`/spots {text}`\n\n"
+                    f"Или выберите нужную кнопку ниже 👇",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # Иначе считаем это запросом погоды
+            else:
+                await self.handle_weather_request(update, context)
 
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик callback-запросов от кнопок"""
@@ -412,7 +535,7 @@ def main():
 
     # Запуск бота
     logger.info("Запуск бота в режиме polling...")
-    application.run_polling()
+    application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
