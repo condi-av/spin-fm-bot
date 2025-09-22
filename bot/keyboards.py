@@ -1,5 +1,5 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from .regions import REGIONS
+from regions import REGIONS
 
 def regions_kb(page: int = 0, per_page: int = 10):
     builder = InlineKeyboardBuilder()
