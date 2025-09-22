@@ -5,9 +5,9 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .keyboards import regions_kb
-from .regions import REGIONS
-from .forecast import get_forecast   # 1.3 прогноз
+from keyboards import regions_kb
+from regions import REGIONS
+from forecast import get_forecast
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = "@SpinFM_Rus"
@@ -74,3 +74,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
