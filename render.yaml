@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: telegram-fishing-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        value: "8199190847:AAFFnG2fYEd3Zurne8yP1alevSsSeKh5VRk"
+      - key: WEATHER_API_KEY
+        value: "d192e284d050cbe679c3641f372e7a02"
