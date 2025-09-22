@@ -19,10 +19,14 @@ WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', "d192e284d050cbe679c3641f372e7a02
 WEATHER_API_URL_TODAY = "http://api.openweathermap.org/data/2.5/weather"
 WEATHER_API_URL_FORECAST = "http://api.openweathermap.org/data/2.5/forecast"
 
+def hpa_to_mmhg(hpa):
+    """Конвертирует гектопаскали в миллиметры ртутного столба."""
+    return hpa * 0.750062
+
 class FishingBot:
     def __init__(self):
         self.weather_cache = {}
-        self.cache_timeout = 1800  # 30 минут
+        self.cache_timeout = 1800
 
     def get_weather_data(self, city, url_type='forecast'):
         """Получение прогноза погоды."""
@@ -45,46 +49,43 @@ class FishingBot:
     def calculate_fishing_conditions(self, temp, pressure, wind_speed, clouds):
         """
         Прогнозирование клёва на основе погоды.
-        Усовершенствованная версия.
+        Обновлённая версия с единым советом.
         """
         score = 0
-        advice = ""
         
+        # Влияние температуры
         if 10 <= temp <= 20:
             score += 2
-            advice += "Температура отличная для большинства видов рыб. "
         elif temp > 20:
             score += 1
-            advice += "В тёплой воде рыба может быть менее активна, ищите её на глубине. "
         else:
             score -= 1
-            advice += "Вода холодная, клёв может быть медленным. "
 
-        if 1010 <= pressure <= 1020:
+        # Влияние давления (нормальное давление ~760 мм рт. ст. или 1013 hPa)
+        pressure_mmhg = hpa_to_mmhg(pressure)
+        if 755 <= pressure_mmhg <= 765:
             score += 2
-            advice += "Давление стабильное, рыба должна быть активна. "
-        elif pressure < 1010:
+        elif pressure_mmhg < 755:
             score += 1
-            advice += "Давление падает – клёв должен быть хороший. "
         else:
             score -= 1
-            advice += "Высокое давление, рыба может быть менее активна. "
 
+        # Влияние ветра и облачности
         if wind_speed < 5 and clouds < 50:
             score += 2
-            advice += "Тихая, ясная погода. Отлично для поплавочной рыбалки. "
         elif wind_speed >= 5:
             score += 1
-            advice += "Небольшой ветер рябит воду, что хорошо для хищника. "
-        else:
-            advice += "Сильный ветер, клёв может быть сложным. "
 
+        # Определение иконки и единого совета на основе очков
         if score >= 4:
             icon = "🟢"
+            advice = "Отличный клёв, идеальная погода!"
         elif score >= 2:
             icon = "🟡"
+            advice = "Клёв будет, но придётся постараться."
         else:
             icon = "🔴"
+            advice = "Сегодня рыба капризничает, но попробовать стоит."
             
         return icon, advice
 
@@ -110,7 +111,7 @@ class FishingBot:
         """Отправка справочной информации"""
         help_text = """
 Помощь по боту:
-* Нажми кнопку "Прогноз на сегодня" или "Прогноз на 5 дней".
+* Нажми кнопку "**Прогноз на сегодня**" или "**Прогноз на 5 дней**".
 * Введи название города, когда я попрошу.
 * Используй команду /start, чтобы перезапустить бота и снова увидеть кнопки.
 """
@@ -132,11 +133,10 @@ class FishingBot:
         forecast_type = context.user_data.get('forecast_type')
 
         if not forecast_type:
-            # Если пользователь не нажал кнопку, а сразу ввёл город
             await update.message.reply_text("Пожалуйста, сначала выбери тип прогноза, нажав на одну из кнопок.")
             return
             
-        await update.message.reply_text(f"Ищу прогноз для города {city}...")
+        await update.message.reply_text(f"Ищу прогноз для города **{city}**...")
         
         weather_data = self.get_weather_data(city, url_type=forecast_type)
         
@@ -148,7 +148,8 @@ class FishingBot:
             main_data = weather_data['main']
             wind_speed = weather_data['wind']['speed']
             clouds = weather_data['clouds']['all']
-            
+            pressure_mmhg = hpa_to_mmhg(main_data['pressure'])
+
             fishing_icon, fishing_advice = self.calculate_fishing_conditions(
                 main_data['temp'],
                 main_data['pressure'],
@@ -157,23 +158,25 @@ class FishingBot:
             )
             
             forecast_text = f"**Прогноз на сегодня для {city.capitalize()}:**\n"
-            forecast_text += f"🌡️ Температура: {main_data['temp']:.1f}°C\n"
-            forecast_text += f"🌬️ Ветер: {wind_speed:.1f} м/с\n"
-            forecast_text += f"💧 Влажность: {main_data['humidity']}%\n"
-            forecast_text += f"🐟 Клёв: **{fishing_icon} {fishing_advice}**"
+            forecast_text += f"🌡️ **Температура**: {main_data['temp']:.1f}°C\n"
+            forecast_text += f"🌬️ **Ветер**: {wind_speed:.1f} м/с\n"
+            forecast_text += f"💧 **Влажность**: {main_data['humidity']}%\n"
+            forecast_text += f"📉 **Давление**: {pressure_mmhg:.1f} мм рт. ст.\n"
+            forecast_text += f"🐟 **Клёв**: **{fishing_icon} {fishing_advice}**"
 
         else: # forecast_type == 'forecast'
-            forecast_text = f"Прогноз клёва и погоды на 5 дней для города {city.capitalize()}:\n\n"
+            forecast_text = f"Прогноз клёва и погоды на 5 дней для города **{city.capitalize()}**:\n\n"
             
             current_hour = datetime.now().hour
             if 5 <= current_hour < 10 or 17 <= current_hour < 22:
-                forecast_text += "✨ Сейчас лучшее время для рыбалки! Утренний и вечерний клёв самые активные.\n\n"
+                forecast_text += "✨ **Сейчас лучшее время для рыбалки! Утренний и вечерний клёв самые активные.**\n\n"
             
             for item in weather_data['list'][::8]:
                 date_time = datetime.fromtimestamp(item['dt'])
                 main_data = item['main']
                 wind_speed = item['wind']['speed']
                 clouds = item['clouds']['all']
+                pressure_mmhg = hpa_to_mmhg(main_data['pressure'])
                 
                 fishing_icon, fishing_advice = self.calculate_fishing_conditions(
                     main_data['temp'],
@@ -183,16 +186,16 @@ class FishingBot:
                 )
                 
                 forecast_text += f"**{date_time.strftime('%A, %d %B')}**\n"
-                forecast_text += f"🌡️ Температура: {main_data['temp']:.1f}°C, ощущается как {main_data['feels_like']:.1f}°C\n"
-                forecast_text += f"🌬️ Ветер: {wind_speed:.1f} м/с\n"
-                forecast_text += f"☁️ Облачность: {clouds}%\n"
-                forecast_text += f"💧 Влажность: {main_data['humidity']}%\n"
-                forecast_text += f"📉 Давление: {main_data['pressure']} hPa\n"
-                forecast_text += f"🐟 Клёв: **{fishing_icon} {fishing_advice}**\n"
+                forecast_text += f"🌡️ **Температура**: {main_data['temp']:.1f}°C, ощущается как {main_data['feels_like']:.1f}°C\n"
+                forecast_text += f"🌬️ **Ветер**: {wind_speed:.1f} м/с\n"
+                forecast_text += f"☁️ **Облачность**: {clouds}%\n"
+                forecast_text += f"💧 **Влажность**: {main_data['humidity']}%\n"
+                forecast_text += f"📉 **Давление**: {pressure_mmhg:.1f} мм рт. ст.\n"
+                forecast_text += f"🐟 **Клёв**: **{fishing_icon} {fishing_advice}**\n"
                 forecast_text += "––––––––––––––––––––\n"
             
         await update.message.reply_text(forecast_text)
-        context.user_data.pop('forecast_type', None) # Очищаем состояние
+        context.user_data.pop('forecast_type', None)
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик ошибок"""
@@ -220,12 +223,10 @@ def main():
     application.add_handler(CommandHandler("start", fishing_bot.start))
     application.add_handler(CommandHandler("help", fishing_bot.send_help))
     
-    # Обработчики для кнопок, которые запрашивают город
     application.add_handler(MessageHandler(filters.Regex('^🎣 Прогноз на сегодня$'), fishing_bot.prompt_city))
     application.add_handler(MessageHandler(filters.Regex('^🎣 Прогноз на 5 дней$'), fishing_bot.prompt_city))
     application.add_handler(MessageHandler(filters.Regex('^📊 Помощь$'), fishing_bot.send_help))
     
-    # Обработчик для ввода города после нажатия кнопки
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fishing_bot.handle_city_input))
 
     application.add_error_handler(fishing_bot.error_handler)
