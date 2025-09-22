@@ -1,15 +1,29 @@
-import os, feedparser, asyncio
+import os, asyncio, threading
+import feedparser
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")          # из переменных окружения
-CHANNEL_ID = "@SpinFM_Rus"                  # наш канал
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = "@SpinFM_Rus"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# -------- команды --------
+# ---------- health-check для Render ----------
+async def health(_: web.Request) -> web.Response:
+    return web.Response(text="OK")
+
+def run_web():
+    app = web.Application()
+    app.router.add_get("/", health)
+    web.run_app(app, host="0.0.0.0", port=10000)
+
+# запускаем веб-сервер в отдельном потоке
+threading.Thread(target=run_web, daemon=True).start()
+
+# ---------- команды бота ----------
 @dp.message(Command("start"))
 async def start(m: types.Message):
     kb = types.InlineKeyboardMarkup(
@@ -24,15 +38,15 @@ async def bite(c: types.CallbackQuery):
     await c.answer()
     await c.message.answer("Пока просто заглушка: клюёт! 😄")
 
-# -------- парсер новостей --------
+# ---------- парсер новостей ----------
 async def post_news():
     url = "https://fishering.ru/feed/"
     feed = feedparser.parse(url)
-    for entry in feed.entries[:1]:       # 1 пост за раз
+    for entry in feed.entries[:1]:
         text = f"<b>{entry.title}</b>\n\n{entry.summary}\n\n{entry.link}"
         await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
 
-# -------- запуск --------
+# ---------- запуск ----------
 async def main():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(post_news, "interval", hours=3)
