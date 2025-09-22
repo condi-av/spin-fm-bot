@@ -1,9 +1,9 @@
 services:
   - type: web
     name: spin-fm-bot
-    env: docker          # ← главное изменение
+    env: docker
     plan: free
-    dockerfilePath: ./Dockerfile
+    port: 10000
     envVars:
       - key: BOT_TOKEN
         sync: false
