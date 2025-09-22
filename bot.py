@@ -3,7 +3,7 @@ import logging
 import requests
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 
 # Настройка логирования
@@ -14,8 +14,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация с вашими токенами
-BOT_TOKEN = "8199190847:AAFFnG2fYEd3Zurne8yP1alevSsSeKh5VRk"
-WEATHER_API_KEY = "d192e284d050cbe679c3641f372e7a02"
+BOT_TOKEN = os.getenv('BOT_TOKEN', "8199190847:AAFFnG2fYEd3Zurne8yP1alevSsSeKh5VRk")
+WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', "d192e284d050cbe679c3641f372e7a02")
 
 class FishingBot:
     def __init__(self):
@@ -57,14 +57,7 @@ class FishingBot:
 ✅ *Отличный*: стабильное давление, температура 15-25°C, легкий ветер
 👍 *Хороший*: небольшие изменения погоды
 ⚡ *Средний*: умеренные изменения
-👎 *Плохой*: резкие перепады, сильный ветер
-
-*Примеры запросов:*
-- Москва
-- Санкт-Петербург 
-- Новосибирск
-- Киев
-- Минск
+👎 *Плохой*: резкие перепады, сильный ветер, гроза
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -118,69 +111,52 @@ class FishingBot:
         pressure = weather_data['pressure']
         wind_speed = weather_data['wind_speed']
         weather_main = weather_data['weather_main']
-        humidity = weather_data['humidity']
 
-        score = 0  # Начинаем с 0
+        score = 0
 
         # Температура (оптимально 15-25°C)
         if 15 <= temp <= 25:
             temp_score = 3
-            temp_comment = "Идеальная температура для клёва"
         elif 10 <= temp < 15 or 25 < temp <= 30:
             temp_score = 2
-            temp_comment = "Хорошая температура"
         elif 5 <= temp < 10 or 30 < temp <= 35:
             temp_score = 1
-            temp_comment = "Умеренная температура"
         else:
             temp_score = 0
-            temp_comment = "Экстремальная температура"
         score += temp_score
 
         # Давление (оптимально 740-750 мм рт.ст.)
         pressure_mm = pressure * 0.750062
         if 740 <= pressure_mm <= 750:
             pressure_score = 3
-            pressure_comment = "Стабильное давление"
         elif 735 <= pressure_mm < 740 or 750 < pressure_mm <= 755:
             pressure_score = 2
-            pressure_comment = "Небольшие изменения"
         elif 730 <= pressure_mm < 735 or 755 < pressure_mm <= 760:
             pressure_score = 1
-            pressure_comment = "Умеренные изменения"
         else:
             pressure_score = 0
-            pressure_comment = "Резкие перепады"
         score += pressure_score
 
         # Ветер
         if wind_speed < 3:
             wind_score = 3
-            wind_comment = "Штиль, отличные условия"
         elif 3 <= wind_speed < 6:
             wind_score = 2
-            wind_comment = "Легкий ветер"
         elif 6 <= wind_speed < 10:
             wind_score = 1
-            wind_comment = "Умеренный ветер"
         else:
             wind_score = 0
-            wind_comment = "Сильный ветер"
         score += wind_score
 
         # Погодные условия
         if weather_main in ['Clear']:
             weather_score = 3
-            weather_comment = "Ясно, отличные условия"
         elif weather_main in ['Clouds']:
             weather_score = 2
-            weather_comment = "Облачно, хорошие условия"
         elif weather_main in ['Drizzle', 'Mist']:
             weather_score = 1
-            weather_comment = "Небольшие осадки"
         else:
             weather_score = 0
-            weather_comment = "Неблагоприятная погода"
         score += weather_score
 
         # Определение рейтинга клёва
@@ -229,13 +205,7 @@ class FishingBot:
             'fishing_rod': fishing_rod,
             'score': score,
             'max_score': max_score,
-            'pressure_mm': round(pressure_mm, 1),
-            'comments': {
-                'temp': temp_comment,
-                'pressure': pressure_comment,
-                'wind': wind_comment,
-                'weather': weather_comment
-            }
+            'pressure_mm': round(pressure_mm, 1)
         }
 
     async def handle_weather_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -282,12 +252,6 @@ class FishingBot:
 
 *Оценка:* {fishing_conditions['score']}/{fishing_conditions['max_score']} баллов
 *Совет:* {fishing_conditions['advice']}
-
-*Детали:*
-• {fishing_conditions['comments']['temp']}
-• {fishing_conditions['comments']['pressure']}
-• {fishing_conditions['comments']['wind']}
-• {fishing_conditions['comments']['weather']}
         """
 
         await update.message.reply_text(message, parse_mode='Markdown')
@@ -312,6 +276,12 @@ class FishingBot:
 def main():
     """Основная функция"""
     logger.info("Запуск бота...")
+    logger.info(f"BOT_TOKEN: {'установлен' if BOT_TOKEN else 'не установлен'}")
+    logger.info(f"WEATHER_API_KEY: {'установлен' if WEATHER_API_KEY else 'не установлен'}")
+    
+    if not BOT_TOKEN:
+        logger.error("❌ BOT_TOKEN не установлен!")
+        return
     
     # Создание бота
     fishing_bot = FishingBot()
@@ -328,26 +298,9 @@ def main():
     # Обработчик ошибок
     application.add_error_handler(fishing_bot.error_handler)
 
-    # Запуск бота
-    if os.getenv('RENDER'):
-        # На Render используем webhook
-        port = int(os.environ.get('PORT', 5000))
-        webhook_url = os.getenv('WEBHOOK_URL')
-        
-        if webhook_url:
-            application.run_webhook(
-                listen="0.0.0.0",
-                port=port,
-                url_path=BOT_TOKEN,
-                webhook_url=f"{webhook_url}/{BOT_TOKEN}"
-            )
-        else:
-            logger.info("Используем polling...")
-            application.run_polling()
-    else:
-        # Локально используем polling
-        logger.info("Локальный запуск (polling)...")
-        application.run_polling()
+    # Запуск бота (только polling на Render)
+    logger.info("Запуск бота в режиме polling...")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
