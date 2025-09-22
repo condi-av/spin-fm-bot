@@ -5,8 +5,9 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .keyboards import regions_kb          # 1.2 клавиатура
-from .regions import REGIONS               # 1.1 список регионов
+from .keyboards import regions_kb
+from .regions import REGIONS
+from .forecast import get_forecast   # 1.3 прогноз
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = "@SpinFM_Rus"
@@ -38,6 +39,21 @@ async def region_page(c: types.CallbackQuery):
 async def bite(c: types.CallbackQuery):
     await c.answer()
     await c.message.answer("Пока просто заглушка: клюёт! 😄")
+
+# ---------- прогноз клева (1.3) ----------
+@dp.callback_query(F.data.in_(REGIONS.values()))
+async def region_selected(c: types.CallbackQuery):
+    region_name = next(k for k, v in REGIONS.items() if v == c.data)
+    forecast = await get_forecast(region_name)
+    text = (
+        f"🎣 <b>{forecast['region']}</b>\n"
+        f"🌡 Температура: {forecast['temp']} °C\n"
+        f"📊 Давление: {forecast['pressure']} мм\n"
+        f"🌕 Луна: {forecast['moon']} %\n"
+        f"⭐ Оценка клева: {forecast['score']}/100\n\n"
+        f"{forecast['advice']}"
+    )
+    await c.message.answer(text, parse_mode="HTML")
 
 # ---------- парсер новостей ----------
 async def post_news():
