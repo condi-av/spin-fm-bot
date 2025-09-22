@@ -1,10 +1,9 @@
 services:
   - type: web
     name: spin-fm-bot
-    env: python
+    env: docker          # ← главное изменение
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -u bot/main.py
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: BOT_TOKEN
-        sync: false  # введём вручную
+        sync: false
