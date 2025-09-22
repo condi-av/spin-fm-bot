@@ -11,19 +11,19 @@ CHANNEL_ID = "@SpinFM_Rus"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ---------- health-check для Render ----------
+# ---------- веб-health-check ----------
 async def health(_: web.Request) -> web.Response:
     return web.Response(text="OK")
 
-def run_web():
+async def web_app():
     app = web.Application()
     app.router.add_get("/", health)
-    web.run_app(app, host="0.0.0.0", port=10000)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 10000)
+    await site.start()
 
-# запускаем веб-сервер в отдельном потоке
-threading.Thread(target=run_web, daemon=True).start()
-
-# ---------- команды бота ----------
+# ---------- команды ----------
 @dp.message(Command("start"))
 async def start(m: types.Message):
     kb = types.InlineKeyboardMarkup(
@@ -51,6 +51,8 @@ async def main():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(post_news, "interval", hours=3)
     scheduler.start()
+
+    asyncio.create_task(web_app())   # стартуем веб
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
