@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: spin-fm-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -u bot/main.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false  # введём вручную
