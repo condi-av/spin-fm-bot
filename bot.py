@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Конфигурация с вашими токенами
 BOT_TOKEN = os.getenv('BOT_TOKEN', "8199190847:AAFFnG2fYEd3Zurne8yP1alevSsSeKh5VRk")
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', "d192e284d050cbe679c3641f372e7a02")
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', "https://spin-fm-bot-pgjh.onrender.com") # Замени на URL твоего сервиса на Render!
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', "https://spin-fm-bot-pgjh.onrender.com")
 
 WEATHER_API_URL_TODAY = "http://api.openweathermap.org/data/2.5/weather"
 WEATHER_API_URL_FORECAST = "http://api.openweathermap.org/data/2.5/forecast"
@@ -32,7 +32,6 @@ class FishingBot:
 
     def get_weather_data(self, city, url_type='forecast'):
         """Получение прогноза погоды."""
-        api_url = WEATHER_API_URL_FORECAST if url_type == 'forecast' else WEATHER_API_URL_TODAY
         try:
             params = {
                 'q': city,
@@ -40,6 +39,7 @@ class FishingBot:
                 'units': 'metric',
                 'lang': 'ru'
             }
+            api_url = WEATHER_API_URL_FORECAST if url_type == 'forecast' else WEATHER_API_URL_TODAY
             response = requests.get(api_url, params=params)
             response.raise_for_status()
             data = response.json()
@@ -48,22 +48,27 @@ class FishingBot:
             logger.error(f"Ошибка запроса к API погоды: {e}")
             return None
 
-    def calculate_fishing_conditions(self, temp, pressure, wind_speed, clouds):
+    def calculate_fishing_conditions(self, temp, pressure, wind_speed, clouds, weather_main):
         """
-        Прогнозирование клёва на основе погоды.
-        Обновлённая версия с единым советом.
+        Прогнозирование клёва на основе погоды с шутками и рекомендациями.
         """
         score = 0
+        advice_parts = []
         
         # Влияние температуры
-        if 10 <= temp <= 20:
-            score += 2
-        elif temp > 20:
+        if temp < -5:
+            score -= 2
+            advice_parts.append("Там такой дубак, что лунки придётся бурить отбойным молотком. Одевайтесь, как на Северный полюс! 🥶")
+        elif -5 <= temp <= 5:
             score += 1
-        else:
+            advice_parts.append("Зима пришла! Лёд встал, пора на зимнюю рыбалку. Только не забудьте термос с чаем! ☕️")
+        elif temp > 25:
             score -= 1
+            advice_parts.append("Жарища! Рыба сейчас в спячке, как и я. Ищите тень или ловите ночью. ☀️")
+        else:
+            score += 2
 
-        # Влияние давления (нормальное давление ~760 мм рт. ст. или 1013 hPa)
+        # Влияние давления (нормальное давление ~760 мм рт. ст.)
         pressure_mmhg = hpa_to_mmhg(pressure)
         if 755 <= pressure_mmhg <= 765:
             score += 2
@@ -71,25 +76,41 @@ class FishingBot:
             score += 1
         else:
             score -= 1
+            advice_parts.append("Давление высокое, так что сегодня рыба может быть немного вялой. Не ждите чудес!")
 
-        # Влияние ветра и облачности
-        if wind_speed < 5 and clouds < 50:
-            score += 2
-        elif wind_speed >= 5:
+        # Влияние ветра
+        if wind_speed >= 10:
+            advice_parts.append("Сегодня ветрено, так что смотрите, чтобы вас не сдуло вместе с удочкой! 💨")
+            score -= 1
+        elif 5 <= wind_speed < 10:
+            advice_parts.append("Небольшой ветерок рябит воду, что хорошо для клёва хищника.")
+            score += 1
+        else:
+            score += 1
+
+        # Влияние осадков
+        if weather_main in ["Snow", "Hail"]:
+            advice_parts.append("Идёт снег! Рыба довольна, потому что снег укрывает её от ваших взглядов! 🌨️")
+            score += 1
+        elif weather_main in ["Rain", "Drizzle"]:
+            advice_parts.append("Идёт дождь! Не забудьте зонтик и дождевик. 🌧️")
             score += 1
 
         # Определение иконки и единого совета на основе очков
         if score >= 4:
             icon = "🟢"
-            advice = "Отличный клёв, идеальная погода!"
+            advice_overall = "Отличный клёв, идеальная погода!"
         elif score >= 2:
             icon = "🟡"
-            advice = "Клёв будет, но придётся постараться."
+            advice_overall = "Клёв будет, но придётся постараться."
         else:
             icon = "🔴"
-            advice = "Сегодня рыба капризничает, но попробовать стоит."
+            advice_overall = "Сегодня рыба капризничает, но попробовать стоит."
+
+        # Объединяем общие советы и персональные шутки
+        final_advice = f"{advice_overall} {' '.join(advice_parts)}"
             
-        return icon, advice
+        return icon, final_advice
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
@@ -133,6 +154,9 @@ class FishingBot:
         """Обрабатывает введенное название города и отправляет прогноз."""
         city = update.message.text
         forecast_type = context.user_data.get('forecast_type')
+        
+        # Список городов, для которых будет особая шутка
+        special_joke_cities = ["озерный", "озёрный", "выползово", "валдай", "бологое", "едрово", "куженкино"]
 
         if not forecast_type:
             await update.message.reply_text("Пожалуйста, сначала выбери тип прогноза, нажав на одну из кнопок.")
@@ -151,13 +175,19 @@ class FishingBot:
             wind_speed = weather_data['wind']['speed']
             clouds = weather_data['clouds']['all']
             pressure_mmhg = hpa_to_mmhg(main_data['pressure'])
+            weather_main = weather_data['weather'][0]['main']
 
             fishing_icon, fishing_advice = self.calculate_fishing_conditions(
                 main_data['temp'],
                 main_data['pressure'],
                 wind_speed,
-                clouds
+                clouds,
+                weather_main
             )
+            
+            # Добавляем шутку для нужных городов
+            if city.lower() in special_joke_cities:
+                fishing_advice += " В этих краях клюёт так, что удочку может утащить в воду! 😜"
             
             forecast_text = f"**Прогноз на сегодня для {city.capitalize()}:**\n"
             forecast_text += f"🌡️ **Температура**: {main_data['temp']:.1f}°C\n"
@@ -179,14 +209,20 @@ class FishingBot:
                 wind_speed = item['wind']['speed']
                 clouds = item['clouds']['all']
                 pressure_mmhg = hpa_to_mmhg(main_data['pressure'])
-                
+                weather_main = item['weather'][0]['main']
+
                 fishing_icon, fishing_advice = self.calculate_fishing_conditions(
                     main_data['temp'],
                     main_data['pressure'],
                     wind_speed,
-                    clouds
+                    clouds,
+                    weather_main
                 )
                 
+                # Добавляем шутку для нужных городов в 5-дневный прогноз
+                if city.lower() in special_joke_cities:
+                    fishing_advice += " В этих краях клюёт так, что удочку может утащить в воду! 😜"
+
                 forecast_text += f"**{date_time.strftime('%A, %d %B')}**\n"
                 forecast_text += f"🌡️ **Температура**: {main_data['temp']:.1f}°C, ощущается как {main_data['feels_like']:.1f}°C\n"
                 forecast_text += f"🌬️ **Ветер**: {wind_speed:.1f} м/с\n"
