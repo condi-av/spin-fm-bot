@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 # Конфигурация с вашими токенами
 BOT_TOKEN = os.getenv('BOT_TOKEN', "8199190847:AAFFnG2fYEd3Zurne8yP1alevSsSeKh5VRk")
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', "d192e284d050cbe679c3641f372e7a02")
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', "https://spin-fm-bot-pgjh.onrender.com") # Замени на URL твоего сервиса на Render!
+
 WEATHER_API_URL_TODAY = "http://api.openweathermap.org/data/2.5/weather"
 WEATHER_API_URL_FORECAST = "http://api.openweathermap.org/data/2.5/forecast"
 
@@ -204,10 +206,8 @@ class FishingBot:
             await update.message.reply_text("⚠️ Произошла ошибка. Попробуйте позже.")
 
 def main():
-    """Основная функция"""
-    logger.info("Запуск бота...")
-    logger.info(f"BOT_TOKEN: {'установлен' if BOT_TOKEN else 'не установлен'}")
-    logger.info(f"WEATHER_API_KEY: {'установлен' if WEATHER_API_KEY else 'не установлен'}")
+    """Основная функция, переделанная под вебхук."""
+    logger.info("Запуск бота как веб-сервиса...")
     
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN не установлен!")
@@ -217,7 +217,10 @@ def main():
         logger.error("❌ WEATHER_API_KEY не установлен!")
         return
     
+    # Создание бота
     fishing_bot = FishingBot()
+    
+    # Создание приложения
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", fishing_bot.start))
@@ -231,7 +234,13 @@ def main():
 
     application.add_error_handler(fishing_bot.error_handler)
 
-    application.run_polling()
+    port = int(os.environ.get('PORT', 8080))
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    )
 
 if __name__ == '__main__':
     main()
