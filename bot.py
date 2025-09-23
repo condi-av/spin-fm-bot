@@ -71,7 +71,7 @@ class FishingBot:
         else:
             score -= 1
 
-        # Влияние ветра и облачности
+        # Влияние ветра
         if wind_speed < 5:
             score += 2
         elif wind_speed >= 5:
